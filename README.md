@@ -8,34 +8,47 @@ This repository provide 9 different algorithms for fair classifications. The imp
 This repository provide python realization of 9 benchmark methods of fair classification,  comprising three pre-processing, in-processing, and post-processing methods each.
 
 -pre-processing: 
+
 --Fair Up- and Down-Sampling (FUDS): X. Zeng, G. Cheng, and E. Dobriban. Bayes-Optimal Fair Classification  with Linear Disparity Constraints via Pre-, In-, and Post-processing.
+
 --Disparate Impact Remover (DIR): 
-  M. Feldman, S. A. Friedler, J. Moeller, C. Scheidegger, and S. Venkatasubramanian. Certifying and removing   
-  disparate impact。
+  M. Feldman, S. A. Friedler, J. Moeller, C. Scheidegger, and S. Venkatasubramanian. Certifying and removing disparate impact.
+  
 --FAWOS
-  T. Salazar, M. S. Santos, H. Ara ́ujo, and P. H. Abreu. FAWOS: Fairness-aware oversampling algorithm based on 
-  distributions of sensitive attributes.
+  T. Salazar, M. S. Santos, H. Ara ́ujo, and P. H. Abreu. FAWOS: Fairness-aware oversampling algorithm based on distributions of sensitive attributes.
 
 -in-processing:
+
 --Fair Cost-Sensitive Classification (FCSC): X. Zeng, G. Cheng, and E. Dobriban. Bayes-Optimal Fair Classification  with Linear Disparity Constraints via Pre-, In-, and Post-processing.
+
 --KDE based constrained optimization (KDE)：
   J. Cho, G. Hwang, and C. Suh. A fair classifier using kernel density estimation.
---Adversarial Debiasing (ADV)
+  
+--Adversarial Debiasing (ADV):
   B. H. Zhang, B. Lemoine, and M. Mitchell. Mitigating unwanted biases with adversarial learning.
 
 -post-processing
---Fair Plug-In Rule (FPIR): X. Zeng, G. Cheng, and E. Dobriban. Bayes-Optimal Fair Classification  with Linear Disparity Constraints via Pre-, In-, and Post-processing.
-  W. Chen, Y. Klochkov, and Y. Liu. Post-hoc bias scoring is optimal for fair classification.
+
+--Fair Plug-In Rule (FPIR): 
+  X. Zeng, G. Cheng, and E. Dobriban. Bayes-Optimal Fair Classification  with Linear Disparity Constraints via      Pre-, In-, and Post-processing.
+  
 --Post-processing through Flipping (FFP)
   W. Chen, Y. Klochkov, and Y. Liu. Post-hoc bias scoring is optimal for fair classification.
+  
 --Post-processing through Optimal Transport (PPOT)
   R. Xian, L. Yin, and H. Zhao. Fair and optimal classification via post-processing.
 
+# Related Works and Repositories
 This repository has draw lessons from other open resourses. 
+
 --Codes for DIR, ADV take inspiration from the AI Fairness 360 platform:  https://github.com/Trusted-AI/AIF360;
+
 --Codes for FAWOS take inspiration from: https://github.com/teresalazar13/FAWOS; 
---Codes for KDE follows the original code provided by: J. Cho, G. Hwang, and C. Suh. A fair classifier using kernel density estimation.
---Codes for PPOT take inspiration from: https://github.com/rxian/fair-classification
+
+--Codes for KDE follows the original code provided by: J. Cho, G. Hwang, and C. Suh. A fair classifier using kernel density estimation;
+
+--Codes for PPOT take inspiration from: https://github.com/rxian/fair-classification;
+
 --Codes for PPF take inspiration from the paper:   W. Chen, Y. Klochkov, and Y. Liu. Post-hoc bias scoring is optimal for fair classification.
 
 
