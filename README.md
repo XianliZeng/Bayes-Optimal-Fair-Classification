@@ -4,7 +4,7 @@ Codebase and Experiments for Bayes-Optimal Fair Classification  with Linear Disp
 # Codebase Overview
 This repository provide 9 different algorithms for fair classifications. The implementations of Fair Up- and Down-Sampling (FUDS), Fair Cost-Sensitive Classification (FCSC), Fair Plug-In Rule (FPIR), and other benchmark methods are located in the 'Algorithms' folder. To replicate the real data analysis from our paper "Bayes-Optimal Fair Classification with Linear Disparity Constraints via Pre-, In-, and Post-processing," please execute main.py. This script will handle the training, testing, and result-saving processes for each method across various datasets. Additionally, by running the print_table and draw_plot functions, you can generate the simulation results that are presented in our paper.
 
-#Algorithms Considered
+# Algorithms Considered
 This repository provide python realization of 9 benchmark methods of fair classification,  comprising three pre-processing, in-processing, and post-processing methods each.
 
 -pre-processing: 
