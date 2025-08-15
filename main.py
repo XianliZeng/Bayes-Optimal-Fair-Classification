@@ -5,36 +5,21 @@ import IPython
 import pandas as pd
 
 from training_setting import training, get_parameter_list
-from analysis_all import drow_plot, print_table
+from analysis_all import draw_plot, print_table
 
-#dataset_list = ['COMPAS', 'AdultCensus', 'Lawschool', 'ACSIncome']
-dataset_list = ['ACSIncome']
-model = 'hgb' #mlp, lgbm, hgb
+dataset_list = ['COMPAS', 'AdultCensus', 'Lawschool', 'ACSIncome']
+model = 'mlp' #mlp, lgbm, hgb #Model to use for pre-training classifier
 
-n_seeds = 10 #Number of random seeds to try
+n_seeds = 50 #Number of random seeds to try
 IPython.display.clear_output()
-
-#3 proposed + 6 baseline
-#methods_to_train = ['FUDS', 'FCSC', 'FPIR', 'DIR', 'FAWOS', 'KDE', 'ADV', 'PPOT', 'PPF']
-#methods_to_train = ['FUDS', 'FCSC', 'FPIR', 'DIR', 'KDE', 'ADV', 'PPOT', 'PPF'] #No FAWOS for ACSIncome
 
 #3 proposed
 #methods_to_train = ['FUDS', 'FCSC', 'FPIR']
-methods_to_train = ['FCSC']
 
-# 6 baseline
-#methods_to_train = ['DIR', 'FAWOS', 'KDE', 'ADV', 'PPF', 'PPOT']
-#methods_to_train = ['ADV']
-
-# additional baseline
-#methods_to_train = ['MinDiff', 'FRAPPE', 'RED', 'ARA']
-#methods_to_train = ['RED']
-
-#Custom
-#methods_to_train = ['ADV', 'PPF', 'PPOT', 'FAWOS', 'KDE'] #OTHER ; OMIT FAWOS for ACSIncome
-
-#ALL 
-#methods_to_train = ['FUDS', 'FCSC', 'FPIR', 'DIR', 'FAWOS', 'KDE', 'ADV', 'PPOT', 'PPF', 'MinDiff', 'FRAPPE', 'ARA'] #Except RED
+#10 baseline
+methods_to_train = ['DIR', 'FAWOS', 'ARA'] #pre-processing
+methods_to_train = ['KDE', 'ADV', 'MinDiff', 'RED'] #in-processing
+methods_to_train = ['PPF', 'PPOT', 'FRAPPE'] #post-processing
 
 ############training##########
 parallel_core_number = int(os.environ['NSLOTS'])
@@ -42,14 +27,9 @@ for method in methods_to_train:
     training(method,dataset_list = dataset_list,n_seeds=n_seeds,parallel_core_number=parallel_core_number,model=model)
 
 ############merge results########
-# default + per-method overrides, as before
-n_seeds_dict = {
-    'REDd': 10
-}
-
 for dataset in dataset_list:
     for method in methods_to_train:
-        seeds_for_method = n_seeds_dict.get(method, n_seeds)
+        seeds_for_method = n_seeds
         Result_all = []
 
         # helper to find the right file
@@ -61,7 +41,7 @@ for dataset in dataset_list:
                 f"Could not find either '{base_path}' nor '{base_path}.csv'"
             )
 
-        if method in ['FPIR', 'PPF', 'FRAPPE', 'PPOT', 'LPP']:
+        if method in ['FPIR', 'PPF', 'PPOT', 'FRAPPE']:
             for seed in range(seeds_for_method):
                 base = f'Result/{method}/NNo/result_of_{dataset}_with_seed_{seed}'
                 temp = load_csv(base)
@@ -86,8 +66,6 @@ for dataset in dataset_list:
         all_df.to_csv(out_path, index=False)
 
 ###Print tables#####
-#print_table(proposed_methods, dataset_list)
-
-
+print_table(proposed_methods, dataset_list)
 ###plot_results######
-#drow_plot(dataset_list)
+draw_plot(dataset_list)
