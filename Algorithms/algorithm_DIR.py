@@ -1,182 +1,195 @@
 import random
-import IPython
 import numpy as np
 import pandas as pd
-import matplotlib.pyplot as plt
 from tqdm import tqdm
+
 from BlackBoxAuditing.repairers.GeneralRepairer import Repairer
-from DataLoader.dataloader_RDI import Get_data_tensor
+from DataLoader.dataloader_DIR import Get_data_tensor
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
-from DataLoader.dataloader_RDI import CustomDataset
-from DataLoader.dataloader_RDI import FairnessDataset
+from DataLoader.dataloader_DIR import CustomDataset, FairnessDataset
 
 from utils import cal_acc, cal_disparity
-import time
-
+import resource
 
 import torch.optim as optim
-from models import Classifier
-
-def RDI(dataset,dataset_name, net, optimizer,lr_schedule, level, device, n_epochs=200, batch_size=2048, seed=0):
 
 
+def thread_cpu_time():
+    r = resource.getrusage(resource.RUSAGE_THREAD)
+    return r.ru_utime + r.ru_stime
 
 
+class Classifier(nn.Module):
+    def __init__(self, n_inputs):
+        super(Classifier, self).__init__()
+        self.model = nn.Sequential(
+            nn.Linear(n_inputs, 32),
+            nn.ReLU(),
+            nn.Linear(32, 32),
+            nn.ReLU(),
+            nn.Linear(32, 32),
+            nn.ReLU(),
+            nn.Linear(32, 1),
+            nn.Sigmoid()
+        )
+
+    def forward(self, x):
+        return self.model(x)
 
 
-    # Retrieve train/test splitted pytorch tensors for index=split
+def DIR(dataset, dataset_name, blind, net, optimizer, lr_schedule,
+        level, device, n_epochs=200, batch_size=2048, seed=0):
+
     training_set, testing_set = dataset.get_dataset()
 
     Y_train = training_set['Target']
-    XZ_train = training_set.drop('Target', axis=1)
-    index_train = XZ_train.keys().tolist().index('Sensitive')
-    features_train = XZ_train.values.tolist()
-
+    XZ_train_df = training_set.drop('Target', axis=1)
+    index_train = XZ_train_df.keys().tolist().index('Sensitive')
+    features_train = XZ_train_df.values.tolist()
 
     Y_test = testing_set['Target']
-    XZ_test = testing_set.drop('Target', axis=1)
-    index_test = XZ_test.keys().tolist().index('Sensitive')
-    features_test = XZ_test.values.tolist()
-
-
+    XZ_test_df = testing_set.drop('Target', axis=1)
+    index_test = XZ_test_df.keys().tolist().index('Sensitive')
+    features_test = XZ_test_df.values.tolist()
 
     repairer_train = Repairer(features_train, index_train, level, False)
     repairer_test = Repairer(features_test, index_test, level, False)
 
     data_train = np.array(repairer_train.repair(features_train))
-    data_test = np.array(repairer_test.repair(features_test))
+    data_test  = np.array(repairer_test.repair(features_test))
+    
+    if data_train.ndim == 1:
+        data_train = data_train.reshape(-1, XZ_train_df.shape[1])
+    if data_test.ndim == 1:
+        data_test = data_test.reshape(-1, XZ_test_df.shape[1])
 
-
-    keys = XZ_train.keys()
-
-
-
-
+    keys    = XZ_train_df.keys()
     df_train = pd.DataFrame(data=data_train, columns=keys)
-    df_test = pd.DataFrame(data=data_test, columns=keys)
+    df_test  = pd.DataFrame(data=data_test,  columns=keys)
 
-    training_tensors,  testing_tensors = Get_data_tensor(dataset_name, df_train,  df_test, Y_train,  Y_test, device)
+    Y_train = Y_train.reset_index(drop=True)
+    Y_test = Y_test.reset_index(drop=True)
 
+    training_tensors, testing_tensors = Get_data_tensor(
+        dataset_name, df_train, df_test, Y_train, Y_test, device
+    )
+    X_train, Y_train_t, Z_train, XZ_train = training_tensors
+    X_test,  Y_test_t,  Z_test,  XZ_test  = testing_tensors
 
-
-    X_train, Y_train, Z_train, XZ_train = training_tensors
-    X_test, Y_test, Z_test, XZ_test = testing_tensors
-
-    # training data size and validation data size
-
-
-
-    custom_dataset = CustomDataset(XZ_train, Y_train, Z_train)
-    if batch_size == 'full':
-        batch_size_ = XZ_train.shape[0]
-    elif isinstance(batch_size, int):
-        batch_size_ = batch_size
-    data_loader = DataLoader(custom_dataset, batch_size=batch_size_, shuffle=True)
-
-
+    if not blind:
+        ds = CustomDataset(XZ_train, Y_train_t, Z_train)
+        bs = XZ_train.shape[0] if batch_size == 'full' else batch_size
+        data_loader = DataLoader(ds, batch_size=bs, shuffle=True)
+    else:
+        ds = CustomDataset(X_train, Y_train_t, Z_train)
+        bs = X_train.shape[0] if batch_size == 'full' else batch_size
+        data_loader = DataLoader(ds, batch_size=bs, shuffle=True)
 
     loss_function = nn.BCELoss()
+    start_time = thread_cpu_time()
+
     with tqdm(range(n_epochs)) as epochs:
-        epochs.set_description(f"Training the classifier with dataset: {dataset_name}, seed: {seed}, level: {level}")
+        desc = f"Training classifier: {dataset_name}, seed {seed}, level {level}"
+        epochs.set_description(desc)
         for epoch in epochs:
             net.train()
-            for i, (xz_batch, y_batch, z_batch) in enumerate(data_loader):
-                xz_batch, y_batch, z_batch = xz_batch.to(device), y_batch.to(device), z_batch.to(device)
-                Yhat = net(xz_batch)
+            for cov_batch, y_batch, z_batch in data_loader:
+                cov_batch = cov_batch.to(device)
+                y_batch   = y_batch.to(device)
+                z_batch   = z_batch.to(device)
 
-                # prediction loss
+                Yhat = net(cov_batch)
                 cost = loss_function(Yhat.squeeze(), y_batch)
 
                 optimizer.zero_grad()
                 cost.backward()
                 optimizer.step()
 
-
                 epochs.set_postfix(loss=cost.item())
+
             if dataset_name == 'AdultCensus':
                 lr_schedule.step()
 
-    eta_test = net(XZ_test).detach().cpu().numpy().squeeze()
-    Y_test_np = Y_test.clone().detach().numpy()
-    Z_test_np = Z_test.clone().detach().numpy()
+    net.eval()
+    with torch.no_grad():
+        if not blind:
+            eta_test = net(XZ_test).cpu().numpy().squeeze()
+        else:
+            eta_test = net(X_test).cpu().numpy().squeeze()
 
-    acc = cal_acc(eta_test,Y_test_np,Z_test_np,0.5,0.5)
-    disparity = cal_disparity(eta_test,Z_test_np,0.5,0.5)
+    Y_test_np = Y_test_t.cpu().numpy() if isinstance(Y_test_t, torch.Tensor) else Y_test_t.to_numpy()
+    Z_test_np = Z_test.cpu().numpy()
 
-    data = [seed,dataset_name,level,acc, np.abs(disparity)]
-    columns = ['seed','dataset','level','acc', 'disparity']
+    acc = cal_acc(eta_test, Y_test_np, Z_test_np, 0.5, 0.5)
+    disparity = cal_disparity(eta_test, Z_test_np, 0.5, 0.5)
 
+    elapsed = thread_cpu_time() - start_time
+    data = [seed, dataset_name, level, acc, abs(disparity), elapsed]
+    columns = ['seed', 'dataset', 'level', 'acc', 'disparity', 'time']
+    df_result = pd.DataFrame([data], columns=columns)
 
-    df_test = pd.DataFrame([data], columns=columns)
-
-    return df_test
-
-
-
+    return df_result
 
 
 def get_training_parameters(dataset_name):
     if dataset_name == 'AdultCensus':
-        n_epochs = 200
-        lr = 1e-1
-        batch_size = 512
-    if dataset_name == 'COMPAS':
-        n_epochs = 500
-        lr = 5e-4
-        batch_size = 2048
-
-    if dataset_name == 'Lawschool':
-        n_epochs = 200
-        lr = 2e-4
-        batch_size = 2048
-    return n_epochs,lr,batch_size
+        return 200, 1e-1, 512
+    elif dataset_name == 'COMPAS':
+        return 500, 5e-4, 2048
+    elif dataset_name == 'Lawschool':
+        return 200, 2e-4, 2048
+    elif dataset_name == 'ACSIncome':
+        return 20, 1e-3, 128
+    else:
+        raise ValueError(f"Unknown dataset_name: {dataset_name}")
 
 
-
-
-
-
-def training_DIR(dataset_name, level,seed):
+def training_DIR(dataset_name, level, blind, seed):
     device = torch.device('cpu')
 
-
-    # Set a seed for random number generation
     random.seed(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
 
-    # Import dataset
-    dataset = FairnessDataset(dataset=dataset_name, seed = seed, device=device)
-    T1,  T2= dataset.get_dataset()
-    input_dim = len(T1.keys())-1
-    n_epochs, lr, batch_size= get_training_parameters(dataset_name)
-    # Create a classifier model
+    # Load the raw DataFrame without any repair
+    dataset = FairnessDataset(dataset=dataset_name, seed=seed, device=device)
+    T1, T2 = dataset.get_dataset()
 
-    net = Classifier(n_inputs=input_dim)
-    net = net.to(device)
+    # Hyperparameters
+    n_epochs, lr, batch_size = get_training_parameters(dataset_name)
 
-    # Set an optimizer
-    lr_decay = 0.98
+    if not blind:
+        input_dim = len(T1.keys()) - 1
+    else:
+        input_dim = len(T1.keys()) - 2 
+
+    # Instantiate Classifier with that input_dim
+    net = Classifier(n_inputs=input_dim).to(device)
+
+    # Now optimizer and scheduler use the correctly sized net
     optimizer = optim.Adam(net.parameters(), lr=lr)
-    lr_schedule = optim.lr_scheduler.ExponentialLR(optimizer, gamma=lr_decay)
-    # Fair classifier training
+    lr_schedule = optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.98)
 
+    # Pass this net into DIR (which will train it on the repaired data)
+    result_df = DIR(
+        dataset=dataset,
+        dataset_name=dataset_name,
+        blind=blind,
+        net=net,
+        optimizer=optimizer,
+        lr_schedule=lr_schedule,
+        level=level,
+        device=device,
+        n_epochs=n_epochs,
+        batch_size=batch_size,
+        seed=seed
+    )
 
-    Result = RDI(dataset=dataset,dataset_name=dataset_name,
-                 net=net, optimizer=optimizer, lr_schedule=lr_schedule,level = level,
-                 device=device, n_epochs=n_epochs, batch_size=batch_size, seed=seed)
-
-    print(Result)
-    Result.to_csv(f'Result/DIR/result_of_{dataset_name}_with_seed_{seed}_para_{int(level*1000)}')
-
-
-
-
-
-
-
-
-
-
+    print(result_df)
+    suffix = "" if not blind else "_blind"
+    result_df.to_csv(
+        f"Result/DIR/NNo/result_of_{dataset_name}_with_seed_{seed}_para_{int(level*1000)}{suffix}",
+        index=False
+    )

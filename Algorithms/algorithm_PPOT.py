@@ -11,9 +11,35 @@ from torch.utils.data import DataLoader
 from DataLoader.dataloader import CustomDataset
 import time
 
+import resource
+
+def thread_cpu_time():
+    r = resource.getrusage(resource.RUSAGE_THREAD)
+    return r.ru_utime + r.ru_stime
+
 from DataLoader.dataloader import FairnessDataset
 import torch.optim as optim
-from models import Classifier
+#from models import Classifier
+
+class Classifier(nn.Module):
+    def __init__(self, n_inputs):
+        super(Classifier, self).__init__()
+        self.model = nn.Sequential(
+                        nn.Linear(n_inputs, 32),
+                        nn.ReLU(),
+                        nn.Linear(32, 32),
+                        nn.ReLU(),
+                        nn.Linear(32, 32),
+                        nn.ReLU(),
+                        nn.Linear(32, 1),
+                        nn.Sigmoid()
+                    )
+
+    def forward(self, x):
+        predict = self.model(x)
+        return predict
+        
+
 def get_level(dataset_name):
     if dataset_name == 'AdultCensus':
         level_list = np.arange(10)/50
@@ -21,6 +47,8 @@ def get_level(dataset_name):
         level_list  = 0.3 * np.arange(10) / 10
     if dataset_name == 'Lawschool':
         level_list = np.arange(10) / 125
+    if dataset_name == 'ACSIncome':
+        level_list = 0.025 * np.arange(10)
 
     return level_list
 
@@ -86,7 +114,9 @@ def PPOT(dataset,dataset_name,net, optimizer, lr_schedule, device, n_epochs=200,
     n_test = len(Y_test_np)
     df_test = pd.DataFrame()
     for alpha in alphas:
+        start_time = thread_cpu_time()
         temp =  utils.postprocess( alpha_seed_and_kwargs = [alpha,seed],postprocessor_factory = postprocess.PostProcessorDP,  probas = probas_,labels = labels_,groups = groups_,n_post = n_post,n_test = n_test, dataset_name = dataset_name)
+        temp['time'] = thread_cpu_time() - start_time
         df_test = pd.concat([df_test,temp])
 
 
@@ -109,6 +139,12 @@ def get_training_parameters(dataset_name):
         n_epochs = 200
         lr = 2e-4
         batch_size = 2048
+        
+    if dataset_name == 'ACSIncome':
+        n_epochs = 20
+        lr = 1e-3
+        batch_size = 128
+        
     return n_epochs,lr,batch_size
 
 
@@ -144,8 +180,7 @@ def training_PPOT(dataset_name,seed):
                      device=device, n_epochs=n_epochs, batch_size=batch_size, seed=seed)
 
 
-
-    Result.to_csv(f'Result/PPOT/result_of_{dataset_name}_with_seed_{seed}')
+    Result.to_csv(f'Result/PPOT/NNo/result_of_{dataset_name}_with_seed_{seed}')
 
 
 

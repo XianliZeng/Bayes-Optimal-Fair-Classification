@@ -11,34 +11,51 @@ from torch.utils.data import DataLoader
 from DataLoader.dataloader import CustomDataset
 import torch.optim as optim
 
-from models import Classifier
+#from models import Classifier
 from models import domain_Classifier
 from DataLoader.dataloader import FairnessDataset
+
+class Classifier(nn.Module):
+    def __init__(self, n_inputs):
+        super(Classifier, self).__init__()
+        self.model = nn.Sequential(
+                        nn.Linear(n_inputs, 32),
+                        nn.ReLU(),
+                        nn.Linear(32, 32),
+                        nn.ReLU(),
+                        nn.Linear(32, 32),
+                        nn.ReLU(),
+                        nn.Linear(32, 1),
+                        nn.Sigmoid()
+                    )
+
+    def forward(self, x):
+        predict = self.model(x)
+        return predict
 
 import time
 
 
 from utils import cal_acc,cal_disparity
 
+import resource
+
+def thread_cpu_time():
+    r = resource.getrusage(resource.RUSAGE_THREAD)
+    return r.ru_utime + r.ru_stime
 
 
-
-def Adversarial(dataset,dataset_name,alpha,clf, adv,optimizer_clf,optimizer_adv,lr_scheduler_clf,device, batch_size,n_epochs=200, seed=0):
+def Adversarial(dataset,dataset_name,alpha, blind, clf, adv,optimizer_clf,optimizer_adv,lr_scheduler_clf,device, batch_size,n_epochs=200, seed=0):
 
     random.seed(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
 
-
+    start_time = thread_cpu_time()
 
     training_tensors, testing_tensors = dataset.get_dataset_in_tensor()
     X_train, Y_train, Z_train, XZ_train = training_tensors
     X_test, Y_test, Z_test, XZ_test = testing_tensors
-
-
-
-
-
 
     Y_test_co = Y_test.clone()
     Y_test_np = Y_test_co.cpu().detach().numpy()
@@ -46,9 +63,10 @@ def Adversarial(dataset,dataset_name,alpha,clf, adv,optimizer_clf,optimizer_adv,
     Z_test_co = Z_test.clone()
     Z_test_np = Z_test_co.cpu().detach().numpy()
 
-
-
-    custom_dataset = CustomDataset(XZ_train, Y_train,Z_train)
+    if not blind:
+        custom_dataset = CustomDataset(XZ_train, Y_train,Z_train)
+    elif blind:
+        custom_dataset = CustomDataset(X_train, Y_train,Z_train)
 
     train_loader = torch.utils.data.DataLoader(
         custom_dataset, batch_size=batch_size,
@@ -150,16 +168,18 @@ def Adversarial(dataset,dataset_name,alpha,clf, adv,optimizer_clf,optimizer_adv,
 
 
     with torch.no_grad():
-
-        eta_test = clf(XZ_test).detach().cpu().numpy().squeeze()
+        if not blind:
+            eta_test = clf(XZ_test).detach().cpu().numpy().squeeze()
+        elif blind:
+            eta_test = clf(X_test).detach().cpu().numpy().squeeze()
 
         Y_test_np = Y_test.clone().detach().numpy()
         Z_test_np = Z_test.clone().detach().numpy()
 
         acc = cal_acc(eta_test, Y_test_np, Z_test_np, 0.5, 0.5)
         disparity = cal_disparity(eta_test, Z_test_np, 0.5, 0.5)
-        data = [seed, dataset_name, alpha, acc, np.abs(disparity)]
-        columns = ['seed', 'dataset', 'alpha', 'acc', 'disparity']
+        data = [seed, dataset_name, alpha, acc, np.abs(disparity), thread_cpu_time() - start_time]
+        columns = ['seed', 'dataset', 'alpha', 'acc', 'disparity', 'time']
         df_test = pd.DataFrame([data], columns=columns)
 
 
@@ -184,13 +204,19 @@ def get_training_parameters(dataset_name):
         n_epochs = 200
         lr = 2e-4
         batch_size = 2048
+        
+    if dataset_name == 'ACSIncome':
+        n_epochs = 20
+        lr = 1e-3
+        batch_size = 128
+        
     return n_epochs,lr,batch_size
 
 
 
 
 
-def training_ADV(dataset_name, alpha, seed):
+def training_ADV(dataset_name, alpha, blind, seed):
 
     device = torch.device('cpu')
 
@@ -203,11 +229,12 @@ def training_ADV(dataset_name, alpha, seed):
     # Import dataset
     dataset = FairnessDataset(dataset=dataset_name, seed=seed, device=device)
     dataset.normalize()
-    input_dim = dataset.XZ_train.shape[1]
+    if not blind:
+        input_dim = dataset.XZ_train.shape[1]
+    elif blind:
+        input_dim = dataset.X_train.shape[1]
     n_epochs, lr, batch_size = get_training_parameters(dataset_name)
     # Create a classifier model
-
-
     print(f'we are runing {dataset_name} with seed: {seed} adversary_loss_weight: {alpha}')
     clf = Classifier(n_inputs=input_dim)
     adv = domain_Classifier()
@@ -220,12 +247,15 @@ def training_ADV(dataset_name, alpha, seed):
     # Set an optimizer
 
 
-    Result = Adversarial(dataset=dataset,dataset_name=dataset_name,  alpha=alpha,
+    Result = Adversarial(dataset=dataset,dataset_name=dataset_name,  alpha=alpha, blind=blind,
                        clf=clf, adv=adv,
                        optimizer_clf=optimizer_clf, optimizer_adv=optimizer_adv, lr_scheduler_clf=lr_scheduler_clf,
                        device=device, batch_size=batch_size, n_epochs=n_epochs, seed=seed)
     print(Result)
-    Result.to_csv(f'Result/ADV/result_of_{dataset_name}_with_seed_{seed}_para_{int(alpha*1000)}')
+    if not blind:
+        Result.to_csv(f'Result/ADV/NNo/result_of_{dataset_name}_with_seed_{seed}_para_{int(alpha*1000)}')
+    elif blind:
+        Result.to_csv(f'Result/ADV/NNo/result_of_{dataset_name}_with_seed_{seed}_para_{int(alpha*1000)}_blind')
 
 
 
