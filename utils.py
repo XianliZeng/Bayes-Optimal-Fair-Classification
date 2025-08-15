@@ -1,11 +1,11 @@
 import numpy as np
 import pandas as pd
 
-import numpy as np
 import traceback
 import random
 
 
+#Attribute Aware Utility Functions
 
 def cal_threshold(t,p11,p10,p01,p00):
     t1 = 1 / 2 + t / 2 / (p11 + p10)
@@ -22,13 +22,10 @@ def cal_threshold(t,p11,p10,p01,p00):
         t0 = 0
     return t1, t0
 
-
-
 def cal_t_bound(p11,p10,p01,p00):
     upperbound = min((p11+p10),(p01+p00))
     lowerbound = -1 * upperbound
     return lowerbound, upperbound
-
 
 def cal_acc(eta, Y, Z, t1, t0):
     Yhat = np.zeros_like(eta)
@@ -40,8 +37,6 @@ def cal_acc(eta, Y, Z, t1, t0):
 def cal_disparity(eta,Z,t1,t0):
     disparity = (eta[Z==1]>t1).mean() - (eta[Z==0]>t0).mean()
     return disparity
-
-
 
 def fint_thresholds(eta,Y,Z,level=0, pre_level=1e-5):
     p11 = (Z * Y).mean()
@@ -84,42 +79,36 @@ def fint_thresholds(eta,Y,Z,level=0, pre_level=1e-5):
 
     return t1,t0
 
-def number_of_sample(n11,n10,n01,n00,t,n_sample):
+def number_of_sample(n11,n10,n01,n00,t,n_sample,blind):
 
     n = n11 + n10 + n01 + n00
     p11 = n11/n
     p10 = n10/n
     p01 = n01/n
     p00 = n00/n
-    s11 = p11 * (1 / 2 - t / 2 / (p11 + p10))
-    s10 = p10 * (1 / 2 + t / 2 / (p11 + p10))
-    s01 = p01 * (1 / 2 + t / 2 / (p01 + p00))
-    s00 = p00 * (1 / 2 - t / 2 / (p01 + p00))
+    if not blind or blind: #sampling weights are exact same for attribute aware and unaware setting for DD
+        s11 = p11 * (1 / 2 - t / 2 / (p11 + p10))
+        s10 = p10 * (1 / 2 + t / 2 / (p11 + p10))
+        s01 = p01 * (1 / 2 + t / 2 / (p01 + p00))
+        s00 = p00 * (1 / 2 - t / 2 / (p01 + p00))
 
-    if s11 < 0:
-        s11 = 0
-
-    if s10 < 0:
-        s10 = 0
-    if s01 < 0:
-        s01 = 0
-    if s00 < 0:
-        s00 = 0
-    p11new = 0.5 * s11 / (s11 + s10)
-    p10new = 0.5 * s10 / (s11 + s10)
-    p01new = 0.5 * s01 / (s01 + s00)
-    p00new = 0.5 * s00 / (s01 + s00)
-
+        if s11 < 0:
+            s11 = 0
+        if s10 < 0:
+            s10 = 0
+        if s01 < 0:
+            s01 = 0
+        if s00 < 0:
+            s00 = 0
+        p11new = 0.5 * s11 / (s11 + s10)
+        p10new = 0.5 * s10 / (s11 + s10)
+        p01new = 0.5 * s01 / (s01 + s00)
+        p00new = 0.5 * s00 / (s01 + s00)
 
     n11_new,n10_new, n01_new, n00_new = round(n_sample * p11new),round(n_sample * p10new), round(n_sample * p01new), round(n_sample * p00new)
 
 
     return n11_new,n10_new, n01_new, n00_new
-
-
-
-
-
 
 def postprocess(alpha_seed_and_kwargs, postprocessor_factory,
                 probas, labels, groups, n_test, n_post,dataset_name):
@@ -172,9 +161,6 @@ def postprocess(alpha_seed_and_kwargs, postprocessor_factory,
 
     return df_test
 
-
-
-
 def threshold_flipping(pa,eta, Yhat,Y,Z,level):
 
     s = ((1-Z)/(1-pa) - Z/pa) * (2* Yhat-1) /   ( (2 * eta - 1)*(2 * Yhat-1))
@@ -205,17 +191,12 @@ def threshold_flipping(pa,eta, Yhat,Y,Z,level):
 
     return tstar
 
-
-
-
-
-def postpreocessing_flipping(pa,eta, Yhat,Z,t):
+def postprocessing_flipping(pa,eta, Yhat,Z,t):
 
     s = ((1-Z)/(1-pa) - Z/pa) * (2* Yhat-1) /     ( (2 * eta - 1)*(2 * Yhat-1))
     Yhat_new = (s/t<=1) * Yhat  +    (s/t>1) * (1- Yhat)
 
     return Yhat_new
-
 
 
 def cal_acc_PPF(Yhat, Y):
@@ -256,7 +237,52 @@ def sample_points(dataset, alldata, number):
     return syndataset
 
 
+#Attribute Blind Utility Functions
 
+def cal_threshold_blind(t,p11,p10,p01,p00,pred_Z): #only for DD
+    return 1/2 + t / 2 * (pred_Z-(p11 + p10)) / (p11 + p10) / (p01 + p00) 
 
+def cal_acc_blind(eta, Y, ts):
+    Yhat = (eta > ts)
+    acc = (Yhat == Y).mean()
+    return acc
 
+def cal_disparity_blind(eta,ts,p11,p10,p01,p00,pred_Z):
+    return np.sum((eta>ts) * (pred_Z/(p11 + p10) - (1-pred_Z)/(p01 + p00))) / len(eta)
 
+def fint_thresholds_blind(eta,p11,p10,p01,p00,pred_Z,level=0, pre_level=1e-5):
+
+    lowerbound, upperbound = cal_t_bound(p11,p10,p01,p00)
+    tmid = 0
+    ts = cal_threshold_blind(tmid,p11,p10,p01,p00,pred_Z)
+    disparity0 = cal_disparity_blind(eta,ts,p11,p10,p01,p00,pred_Z)
+    if abs(disparity0) < level:
+        return tmid
+    elif disparity0 > level:
+        tmax = upperbound
+        tmin = 0
+        level0 = level
+        tmid = (tmax + tmin)/2
+        while tmax - tmin > pre_level:
+            ts = cal_threshold_blind(tmid,p11,p10,p01,p00,pred_Z)
+            disparity = cal_disparity_blind(eta,ts,p11,p10,p01,p00,pred_Z)
+            if disparity > level0:
+                tmin = tmid
+            else:
+                tmax = tmid
+            tmid = (tmax + tmin)/2
+    else:
+        tmax = 0
+        tmin = lowerbound
+        level0 = -1 * level
+        tmid = (tmax + tmin)/2
+        while tmax - tmin > pre_level:
+            ts = cal_threshold_blind(tmid,p11,p10,p01,p00,pred_Z)
+            disparity = cal_disparity_blind(eta,ts,p11,p10,p01,p00,pred_Z)
+            if disparity > level0:
+                tmin = tmid
+            else:
+                tmax = tmid
+            tmid = (tmax + tmin)/2
+
+    return tmid
