@@ -18,7 +18,6 @@ from Algorithms.algorithm_FPIR import training_FPIR
 from Algorithms.algorithm_PPF import training_PPF
 from Algorithms.algorithm_PPOT import training_PPOT
 from Algorithms.algorithm_FRAPPE import training_FRAPPE #in_processing=False
-from Algorithms.algorithm_LPP import training_LPP
 
 ###Baseline###
 from Algorithms.algorithm_BASE import training_BASE
@@ -174,11 +173,3 @@ def training(method,dataset_list,n_seeds,parallel_core_number,model="mlp"):
         Parallel(n_jobs=parallel_core_number, backend='threading')(
                 delayed(training_FRAPPE)(dataset, None, seed, in_processing=False) for dataset in dataset_list for seed in range(n_seeds))
                 
-    if method == 'LPP':
-        Parallel(n_jobs=parallel_core_number, backend='threading')(
-                delayed(training_LPP)(dataset, True, seed) for dataset in dataset_list for seed in range(n_seeds))
-        
-    if method == 'BASE':
-        Parallel(n_jobs=parallel_core_number, backend='threading')(
-                delayed(training_BASE)(dataset, False, seed) for dataset in dataset_list for seed in range(n_seeds))
-
